@@ -1,0 +1,25 @@
+<%#
+  Site header. Locals: t, page, langSwitchHref
+-%>
+<header class="site-header">
+  <div class="site-header__inner">
+    <div class="brand">
+      <span class="brand__name" dir="ltr"><%= t.appName %></span>
+      <span class="brand__tagline"><%= t.tagline %></span>
+    </div>
+    <nav class="site-nav" aria-label="<%= t.appName %>">
+      <a class="site-nav__link<%= page === 'game' ? ' is-current' : '' %>" href="/" <% if (page === 'game') { %>aria-current="page"<% } %>><%= t.nav.game %></a>
+      <a class="site-nav__link<%= page === 'schemas' ? ' is-current' : '' %>" href="/schemas/" <% if (page === 'schemas') { %>aria-current="page"<% } %>><%= t.nav.schemas %></a>
+      <a class="site-nav__link site-nav__lang" href="<%= langSwitchHref %>" lang="<%= t.meta.otherLang %>" dir="ltr"><%= t.meta.otherLangLabel %></a>
+      <button class="theme-toggle" type="button" id="theme-toggle" aria-label="<%= t.nav.theme %>" title="<%= t.nav.theme %>">
+        <svg class="theme-toggle__icon theme-toggle__icon--moon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+          <path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+        </svg>
+        <svg class="theme-toggle__icon theme-toggle__icon--sun" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+          <circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.6"/>
+          <path d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M18.7 5.3l-1.6 1.6M6.9 17.1l-1.6 1.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </nav>
+  </div>
+</header>

@@ -1,0 +1,21 @@
+{
+  "name": "http-quest",
+  "version": "1.0.0",
+  "description": "A level-based game for learning HTTP and REST, built with Node.js and Express",
+  "main": "server.js",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "ejs": "^6.0.1",
+    "express": "^5.2.1",
+    "on-headers": "^1.1.0"
+  }
+}

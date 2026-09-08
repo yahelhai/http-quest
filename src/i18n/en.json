@@ -1,0 +1,184 @@
+{
+  "meta": {
+    "lang": "en",
+    "dir": "ltr",
+    "otherLang": "he",
+    "otherLangLabel": "עברית"
+  },
+  "ui": {
+    "appName": "HTTP Quest",
+    "tagline": "A short hands-on game for learning HTTP and REST: 11 levels, real requests, real responses.",
+    "nav": {
+      "game": "Game",
+      "schemas": "Schemas",
+      "langSwitch": "עברית",
+      "theme": "Theme"
+    },
+    "level": {
+      "of": "Level {n} of {total}",
+      "concept": "The idea",
+      "task": "The task",
+      "attempts": "{n} attempts"
+    },
+    "builder": {
+      "title": "Build the request",
+      "method": "Method",
+      "path": "Path",
+      "pathPlaceholder": "movies",
+      "query": "Query",
+      "addParam": "Add parameter",
+      "removeParam": "Remove",
+      "key": "Key",
+      "value": "Value",
+      "body": "Body",
+      "bodyPlaceholder": "{ \"title\": \"...\" }",
+      "bodyDisabled": "No body for GET or DELETE",
+      "bodyInvalidJson": "That's not valid JSON. Check brackets and quotes.",
+      "send": "Send",
+      "sending": "Sending...",
+      "requestLine": "{method} /api/{path}"
+    },
+    "response": {
+      "title": "Response",
+      "empty": "No request sent yet",
+      "status": "Status",
+      "headers": "Headers",
+      "body": "Body",
+      "noBody": "No body (204 has none)",
+      "time": "{ms} ms"
+    },
+    "verdict": {
+      "pass": "Passed",
+      "fail": "Not yet",
+      "next": "Next level",
+      "retry": "Try again",
+      "finish": "Finish"
+    },
+    "progress": {
+      "title": "Progress",
+      "reset": "Reset",
+      "resetConfirm": "Reset all progress?",
+      "done": "Done",
+      "locked": "Locked"
+    },
+    "finish": {
+      "title": "You finished every level",
+      "body": "You cleared all 11 levels in {attempts} attempts total.",
+      "replay": "Play again from the start"
+    },
+    "schemas": {
+      "title": "Schemas",
+      "intro": "The fields and parameters of every resource in the game, exactly as the server checks them.",
+      "fields": "Fields",
+      "field": "Field",
+      "type": "Type",
+      "required": "Required",
+      "readonly": "Read-only",
+      "description": "Description",
+      "example": "Example",
+      "allowed": "Allowed values",
+      "range": "Range",
+      "queries": "Query parameters",
+      "endpoints": "Endpoints",
+      "endpoint": "Endpoint",
+      "statuses": "Status codes",
+      "yes": "Yes",
+      "no": "No",
+      "backToGame": "Back to the game"
+    },
+    "footer": "HTTP Quest, assignment 3 in the web development course"
+  },
+  "hints": {
+    "wrong-method": "That's not the Method this level expects. Check the Method field in the form.",
+    "wrong-path": "The Path doesn't match what this level expects. Check whether a route parameter belongs in the path.",
+    "missing-query": "The request is missing a {param} query parameter. Add it in the Query section.",
+    "bad-query": "The value you sent for {param} isn't valid. Check the allowed values or the type it expects.",
+    "body-missing": "This level needs a JSON body, and none was sent.",
+    "body-not-json": "The server couldn't parse the body as JSON. Check the syntax and that Content-Type is application/json.",
+    "body-invalid": "The {field} field in the body doesn't meet the schema. Take another look at that field.",
+    "body-was-valid": "The server accepted the body and created a movie (201). This level wants a request that fails, try breaking the schema on purpose.",
+    "id-not-found": "That id doesn't exist in the store. Check which ids exist and try again.",
+    "still-exists": "That movie still exists. Ask for the id you deleted in the previous level.",
+    "wrong-status": "The request was close, but the status came back {actual} instead of {expected}. Check again what this level expects.",
+    "unknown-level": "The level wasn't recognized. Refresh the page and try again."
+  },
+  "levels": [
+    {
+      "id": 1,
+      "title": "Your first GET request",
+      "concept": "GET is the HTTP method for asking the server for information, without changing anything. When you send a GET request, the server replies with a status code and a JSON body. Status 200 means the request succeeded.",
+      "task": "Send a GET request to the movies path, nothing after it, and look at the list of movies that comes back.",
+      "success": "Notice the 200 status and the JSON array holding every movie in the store."
+    },
+    {
+      "id": 2,
+      "title": "A parameter in the path",
+      "concept": "A route parameter is part of the path itself that identifies one specific resource, not a value that comes after a question mark. movies/3 asks for the movie whose id is 3, unlike movies, which asks for all of them.",
+      "task": "Send a GET request to movies with an existing movie id at the end of the path, like movies/3, and get back a single movie.",
+      "success": "This time the body is a single object, not an array, because you asked for one specific resource."
+    },
+    {
+      "id": 3,
+      "title": "Your first query parameter",
+      "concept": "A query parameter comes after a question mark in the path and filters or customizes the result, without changing which resource you're asking for. genre is a query parameter that filters the movie list by genre.",
+      "task": "Send a GET request to movies with a genre query parameter set to a valid value, one of the allowed genres, and check that only movies from that genre come back.",
+      "success": "Every movie in the response belongs to the genre you asked for, exactly what a query parameter should do."
+    },
+    {
+      "id": 4,
+      "title": "Combining query parameters",
+      "concept": "You can combine several query parameters in one request, and the server applies them in a fixed order: filter first, then sort, then cut down to a limited count. Each parameter does one job, and combining them gives precise control.",
+      "task": "Send a GET request to movies with three query parameters together: a minimum year to filter by, a sort order, and a limit on the number of results.",
+      "success": "Check that the list is filtered, sorted in the right direction, and shorter than the full store, all three at once."
+    },
+    {
+      "id": 5,
+      "title": "Creating a resource with POST",
+      "concept": "POST creates a new resource. The request needs a JSON body with every required field. When the creation succeeds, the server returns status 201 Created along with a Location header pointing at the new resource.",
+      "task": "Send a POST request to movies with a body that includes every field a new movie requires, check the Schemas page for which fields those are, and see what comes back.",
+      "success": "Look at the Location header: that's the URL of the movie you just created, along with the 201 status."
+    },
+    {
+      "id": 6,
+      "title": "When the request is invalid",
+      "concept": "Not every request succeeds, and that's fine: when a request body doesn't meet the schema, the server returns status 400 Bad Request with a details array explaining exactly what was missing or wrong. That's the server telling you how to fix it.",
+      "task": "Send a POST request to movies with a body that breaks the schema on purpose, like a missing field or a value of the wrong type, and get a 400 back.",
+      "success": "Look at the details array in the response: it lists exactly which fields failed and why."
+    },
+    {
+      "id": 7,
+      "title": "Partial updates with PATCH",
+      "concept": "PATCH updates an existing resource, but only the fields you send. Every other field stays as it was. The path identifies which resource to update with a route parameter, and the body carries only the change.",
+      "task": "Send a PATCH request to an existing movie, movies/:id, with a body that has just one or two fields to update, not all of them.",
+      "success": "The movie that comes back changed exactly in the fields you sent, and every other field stayed the same."
+    },
+    {
+      "id": 8,
+      "title": "Full replacement with PUT",
+      "concept": "PUT, unlike PATCH, replaces the entire resource. That means the body must include every required field, even the ones that didn't change, or the server will treat it as an invalid request. That's the core difference between PATCH and PUT.",
+      "task": "Send a PUT request to an existing movie with a full body containing every required field, just like creating one, only this time on a resource that already exists.",
+      "success": "Every field on the movie now reflects what you just sent, including fields you didn't mean to change."
+    },
+    {
+      "id": 9,
+      "title": "A related resource and a query parameter",
+      "concept": "Sometimes one resource belongs to another. directors/:id/movies is a nested route: it asks for every movie that belongs to a specific director, and you can still add query parameters to it like any other endpoint.",
+      "task": "Send a GET request to the endpoint that returns an existing director's movies, directors/:id/movies, with a sort parameter.",
+      "success": "Every movie in the response belongs to that one director, and they're ordered by the sort you asked for."
+    },
+    {
+      "id": 10,
+      "title": "Deleting with DELETE",
+      "concept": "DELETE removes an existing resource. When the deletion succeeds, the server returns status 204 No Content: there's no response body at all, because there's nothing left to return about a resource that no longer exists.",
+      "task": "Send a DELETE request to an existing movie, movies/:id, and check what comes back.",
+      "success": "The status is 204 and the body is completely empty, exactly what a successful deletion looks like."
+    },
+    {
+      "id": 11,
+      "title": "When the resource is gone",
+      "concept": "404 Not Found isn't a bug, it's a legitimate and precise answer that says the resource you asked for doesn't exist. After deleting a movie, a GET request to it should return exactly that.",
+      "task": "Send a GET request to the same movies/:id you deleted in the previous level, and see how the server answers this time.",
+      "success": "You got a 404, and that's correct: it's the precise answer for a resource that no longer exists."
+    }
+  ]
+}
