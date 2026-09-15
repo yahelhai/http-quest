@@ -1,0 +1,140 @@
+<%#
+  The API reference. Rendered entirely on the server from src/schemas.js.
+  Locals: lang, dir, t, schemas, page, langSwitchHref
+-%>
+<%- include('partials/head', { lang: lang, dir: dir, t: t, page: page }) %>
+<%- include('partials/header', { t: t, page: page, langSwitchHref: langSwitchHref }) %>
+
+<%
+  const resources = [schemas.movies, schemas.directors];
+
+  // "allowed" cell: enum values, or the id this field points at.
+  function allowedOf(f) {
+    if (f.type === 'enum' && f.values) return f.values.join(' | ');
+    if (f.ref) return '→ ' + f.ref;
+    return '';
+  }
+
+  // "range" cell: numeric bounds and string minimum length, in schema words.
+  function rangeOf(f) {
+    const parts = [];
+    if (typeof f.min === 'number' && typeof f.max === 'number') parts.push(f.min + ' … ' + f.max);
+    else if (typeof f.min === 'number') parts.push('≥ ' + f.min);
+    else if (typeof f.max === 'number') parts.push('≤ ' + f.max);
+    if (typeof f.minLength === 'number') parts.push('minLength ' + f.minLength);
+    return parts.join(', ');
+  }
+
+  function exampleOf(f) {
+    return typeof f.example === 'undefined' ? '' : JSON.stringify(f.example);
+  }
+%>
+
+<main class="layout layout--single" id="main">
+
+  <section class="panel panel--intro">
+    <h1 class="page-title"><%= t.schemas.title %></h1>
+    <p class="page-intro"><%= t.schemas.intro %></p>
+    <p><a class="btn btn--ghost btn--sm" href="/"><%= t.schemas.backToGame %></a></p>
+  </section>
+
+  <% resources.forEach(function (r) { %>
+  <section class="panel schema-card" aria-labelledby="res-<%= r.name %>">
+    <div class="schema-card__head">
+      <h2 class="schema-card__name mono" id="res-<%= r.name %>" dir="ltr"><%= r.name %></h2>
+      <code class="schema-card__base" dir="ltr"><%= r.basePath %></code>
+    </div>
+
+    <h3 class="label"><%= t.schemas.fields %></h3>
+    <div class="table-scroll">
+      <table class="table">
+        <thead>
+          <tr>
+            <th scope="col"><%= t.schemas.field %></th>
+            <th scope="col"><%= t.schemas.type %></th>
+            <th scope="col"><%= t.schemas.required %></th>
+            <th scope="col"><%= t.schemas.readonly %></th>
+            <th scope="col"><%= t.schemas.allowed %></th>
+            <th scope="col"><%= t.schemas.range %></th>
+            <th scope="col"><%= t.schemas.example %></th>
+            <th scope="col"><%= t.schemas.description %></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% r.fields.forEach(function (f) { %>
+          <tr>
+            <th scope="row" class="mono" dir="ltr"><%= f.name %></th>
+            <td class="mono" dir="ltr"><%= f.type %></td>
+            <td><%= f.required ? t.schemas.yes : t.schemas.no %></td>
+            <td><%= f.readonly ? t.schemas.yes : t.schemas.no %></td>
+            <td class="mono cell-wrap" dir="ltr"><%= allowedOf(f) %></td>
+            <td class="mono" dir="ltr"><%= rangeOf(f) %></td>
+            <td class="mono" dir="ltr"><%= exampleOf(f) %></td>
+            <td class="cell-text"><%= f.description[lang] %></td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 class="label"><%= t.schemas.queries %></h3>
+    <div class="table-scroll">
+      <table class="table">
+        <thead>
+          <tr>
+            <th scope="col"><%= t.schemas.field %></th>
+            <th scope="col"><%= t.schemas.type %></th>
+            <th scope="col"><%= t.schemas.allowed %></th>
+            <th scope="col"><%= t.schemas.range %></th>
+            <th scope="col"><%= t.schemas.example %></th>
+            <th scope="col"><%= t.schemas.description %></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% r.queries.forEach(function (q) { %>
+          <tr>
+            <th scope="row" class="mono" dir="ltr"><%= q.name %></th>
+            <td class="mono" dir="ltr"><%= q.type %></td>
+            <td class="mono cell-wrap" dir="ltr"><%= allowedOf(q) %></td>
+            <td class="mono" dir="ltr"><%= rangeOf(q) %></td>
+            <td class="mono" dir="ltr"><%= exampleOf(q) %></td>
+            <td class="cell-text"><%= q.description[lang] %></td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <% }) %>
+
+  <section class="panel schema-card" aria-labelledby="endpoints-title">
+    <h2 class="schema-card__name" id="endpoints-title"><%= t.schemas.endpoints %></h2>
+    <div class="table-scroll">
+      <table class="table table--endpoints">
+        <thead>
+          <tr>
+            <th scope="col"><%= t.builder.method %></th>
+            <th scope="col"><%= t.builder.path %></th>
+            <th scope="col"><%= t.schemas.statuses %></th>
+            <th scope="col"><%= t.schemas.description %></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% schemas.endpoints.forEach(function (e) { %>
+          <tr>
+            <td><span class="method method--<%= e.method.toLowerCase() %>" dir="ltr"><%= e.method %></span></td>
+            <th scope="row" class="mono" dir="ltr"><%= e.path %></th>
+            <td class="mono statuses" dir="ltr">
+              <% e.status.forEach(function (s) { %><span class="status status--<%= Math.floor(s / 100) %>xx"><%= s %></span><% }) %>
+            </td>
+            <td class="cell-text"><%= e.description[lang] %></td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+</main>
+
+<%- include('partials/footer', { t: t }) %>

@@ -1,0 +1,145 @@
+<%#
+  The game page. The first level is rendered server-side so the page reads
+  correctly before public/js/game.js takes over; the client then re-renders
+  from localStorage progress and never reloads the page again.
+  Locals: lang, dir, t, levelsPublic, total, page, langSwitchHref
+-%>
+<%- include('partials/head', { lang: lang, dir: dir, t: t, page: page }) %>
+<%- include('partials/header', { t: t, page: page, langSwitchHref: langSwitchHref }) %>
+
+<main class="layout" id="main">
+
+  <section class="panel panel--finish" id="finish" hidden aria-labelledby="finish-title">
+    <h2 class="finish__title" id="finish-title"><%= t.finish.title %></h2>
+    <p class="finish__body" id="finish-body"></p>
+    <button class="btn btn--primary" type="button" id="finish-replay"><%= t.finish.replay %></button>
+  </section>
+
+  <div class="col col--narrative">
+
+    <section class="panel panel--map" aria-labelledby="map-title">
+      <div class="panel__head">
+        <h2 class="panel__title" id="map-title"><%= t.progress.title %></h2>
+        <button class="btn btn--ghost btn--sm" type="button" id="reset-progress"><%= t.progress.reset %></button>
+      </div>
+      <ol class="level-map" id="level-map">
+        <% levelsPublic.forEach(function (lv) { %>
+        <li class="level-map__item">
+          <button class="chip<%= lv.id === 1 ? ' chip--current' : ' chip--locked' %>" type="button"
+                  data-level="<%= lv.id %>" <% if (lv.id !== 1) { %>disabled<% } %>
+                  title="<%= lv.title %>"><span class="chip__n" dir="ltr"><%= lv.id %></span></button>
+        </li>
+        <% }) %>
+      </ol>
+    </section>
+
+    <section class="panel panel--level" aria-labelledby="level-title">
+      <p class="level__of" id="level-of"><%= String(t.level.of).replace('{n}', '1').replace('{total}', String(total)) %></p>
+      <h1 class="level__title" id="level-title"><%= levelsPublic[0].title %></h1>
+
+      <h2 class="label"><%= t.level.concept %></h2>
+      <p class="level__concept" id="level-concept"><%= levelsPublic[0].concept %></p>
+
+      <div class="task">
+        <h2 class="label label--task"><%= t.level.task %></h2>
+        <p class="task__text" id="level-task"><%= levelsPublic[0].task %></p>
+      </div>
+
+      <p class="level__attempts" id="level-attempts"><%= String(t.level.attempts).replace('{n}', '0') %></p>
+    </section>
+
+  </div>
+
+  <div class="col col--console">
+
+    <section class="panel panel--builder" aria-labelledby="builder-title">
+      <h2 class="panel__title" id="builder-title"><%= t.builder.title %></h2>
+
+      <form class="builder" id="builder" novalidate>
+        <div class="builder__row">
+          <div class="field field--method">
+            <label class="field__label" for="method"><%= t.builder.method %></label>
+            <select class="input input--mono" id="method" name="method" dir="ltr">
+              <option value="GET" selected>GET</option>
+              <option value="POST">POST</option>
+              <option value="PUT">PUT</option>
+              <option value="PATCH">PATCH</option>
+              <option value="DELETE">DELETE</option>
+            </select>
+          </div>
+          <div class="field field--path">
+            <label class="field__label" for="path"><%= t.builder.path %></label>
+            <div class="path-input" dir="ltr">
+              <span class="path-input__prefix" aria-hidden="true">/api/</span>
+              <input class="input input--mono path-input__field" id="path" name="path" type="text"
+                     dir="ltr" spellcheck="false" autocomplete="off" autocapitalize="off"
+                     placeholder="<%= t.builder.pathPlaceholder %>">
+            </div>
+          </div>
+        </div>
+
+        <fieldset class="field field--query">
+          <legend class="field__label"><%= t.builder.query %></legend>
+          <div class="query-rows" id="query-rows"></div>
+          <button class="btn btn--ghost btn--sm" type="button" id="add-param"><%= t.builder.addParam %></button>
+        </fieldset>
+
+        <div class="field field--body">
+          <label class="field__label" for="body"><%= t.builder.body %></label>
+          <textarea class="input input--mono textarea" id="body" name="body" dir="ltr" rows="6"
+                    spellcheck="false" autocomplete="off" placeholder="<%= t.builder.bodyPlaceholder %>" disabled></textarea>
+          <p class="field__note" id="body-note"><%= t.builder.bodyDisabled %></p>
+        </div>
+
+        <%# t.builder.requestLine is the pattern "{method} /api/{path}" -%>
+        <div class="request-line">
+          <code class="request-line__code" id="request-line" dir="ltr"><%= String(t.builder.requestLine).replace('{method}', 'GET').replace('{path}', '') %> HTTP/1.1</code>
+        </div>
+
+        <button class="btn btn--primary btn--send" type="submit" id="send"><%= t.builder.send %></button>
+      </form>
+    </section>
+
+    <section class="panel panel--response" aria-labelledby="response-title" aria-live="polite">
+      <h2 class="panel__title" id="response-title"><%= t.response.title %></h2>
+
+      <div class="verdict" id="verdict" hidden>
+        <p class="verdict__head" id="verdict-head"></p>
+        <p class="verdict__text" id="verdict-text"></p>
+        <button class="btn btn--primary btn--sm" type="button" id="verdict-next" hidden></button>
+      </div>
+
+      <p class="response__empty" id="response-empty"><%= t.response.empty %></p>
+
+      <div class="response" id="response" hidden>
+        <div class="response__statusline">
+          <span class="field__label"><%= t.response.status %></span>
+          <code class="status" id="response-status" dir="ltr"></code>
+          <span class="response__time" id="response-time" dir="ltr"></span>
+        </div>
+
+        <h3 class="label"><%= t.response.headers %></h3>
+        <dl class="headers" id="response-headers" dir="ltr"></dl>
+
+        <h3 class="label"><%= t.response.body %></h3>
+        <pre class="code-block" id="response-body" dir="ltr"><code></code></pre>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<%#
+  Client bootstrap as data, not code: public/js/game.js parses this element.
+  Angle brackets are written as JSON unicode escapes, so the payload can
+  never close the script tag early.
+-%>
+<script type="application/json" id="quest-data"><%- JSON.stringify({
+  lang: lang,
+  dir: dir,
+  t: Object.assign({}, t, { levels: undefined, ui: undefined }),
+  levels: levelsPublic,
+  total: total
+}).replace(/</g, '\\u003c') %></script>
+
+<%- include('partials/footer', { t: t }) %>

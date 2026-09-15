@@ -1,0 +1,23 @@
+<%#
+  Document head. Opens <html> and <body>; views/partials/footer.ejs closes them.
+  Locals: lang, dir, t, page
+-%>
+<!doctype html>
+<html lang="<%= lang %>" dir="<%= dir %>">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= page === 'schemas' ? t.schemas.title + ' · ' + t.appName : t.appName %></title>
+  <meta name="description" content="<%= t.tagline %>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Rubik:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="icon" href="data:,">
+  <%# loaded synchronously, before first paint, so the stored theme never flashes -%>
+  <script src="/js/theme.js"></script>
+  <% if (page === 'game') { %>
+  <script src="/js/game.js" defer></script>
+  <% } %>
+</head>
+<body class="page-<%= page %>">
