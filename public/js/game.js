@@ -1,535 +1,308 @@
-'use strict';
+// Builds the request, sends it, shows what came back. Whether the answer was
+// right is decided by the server and arrives in the X-Quest-* headers.
 
-/**
- * HTTP Quest client.
- *
- * The client never judges an answer: it builds a request, sends it with the
- * X-Quest-Level header and renders whatever the server says in
- * X-Quest-Result / X-Quest-Hint. All texts come from the bootstrap JSON that
- * views/game.ejs writes into #quest-data.
- */
-(function () {
-  var bootstrap = document.getElementById('quest-data');
-  if (!bootstrap) return;
+const levels = JSON.parse(document.getElementById('level-data').textContent);
+const total = levels.length;
 
-  var QUEST = JSON.parse(bootstrap.textContent);
-  window.QUEST = QUEST; // handy in the console, and the documented contract
+const STORAGE_KEY = 'http-quest-progress';
+const BODY_METHODS = ['POST', 'PUT', 'PATCH'];
+const SHOWN_HEADERS = ['content-type', 'location', 'x-quest-result', 'x-quest-hint'];
 
-  var T = QUEST.t;
-  var LEVELS = QUEST.levels;
-  var TOTAL = QUEST.total;
-  var STORAGE_KEY = 'http-quest-progress';
-  var HEADERS_OF_INTEREST = ['content-type', 'location', 'x-quest-result', 'x-quest-hint'];
+const el = (id) => document.getElementById(id);
 
-  // ---------------------------------------------------------------- elements
+const form = el('builder');
+const method = el('method');
+const pathInput = el('path');
+const queryRows = el('query-rows');
+const body = el('body');
+const bodyNote = el('body-note');
+const requestLine = el('request-line');
+const sendButton = el('send');
+const levelMap = el('level-map');
+const verdict = el('verdict');
+const response = el('response');
+const responseBody = document.querySelector('#response-body code');
 
-  var el = {
-    map: document.getElementById('level-map'),
-    reset: document.getElementById('reset-progress'),
-    of: document.getElementById('level-of'),
-    title: document.getElementById('level-title'),
-    concept: document.getElementById('level-concept'),
-    task: document.getElementById('level-task'),
-    attempts: document.getElementById('level-attempts'),
+let progress = readProgress();
+let level = Math.min(progress.unlocked, total);
+let sending = false;
 
-    form: document.getElementById('builder'),
-    method: document.getElementById('method'),
-    path: document.getElementById('path'),
-    queryRows: document.getElementById('query-rows'),
-    addParam: document.getElementById('add-param'),
-    body: document.getElementById('body'),
-    bodyNote: document.getElementById('body-note'),
-    requestLine: document.getElementById('request-line'),
-    send: document.getElementById('send'),
+// Progress
 
-    verdict: document.getElementById('verdict'),
-    verdictHead: document.getElementById('verdict-head'),
-    verdictText: document.getElementById('verdict-text'),
-    verdictNext: document.getElementById('verdict-next'),
+function readProgress() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (saved && saved.unlocked >= 1) return saved;
+  } catch {
+    // No storage, or something we cannot read. Start over.
+  }
+  return { unlocked: 1, solved: [], attempts: {} };
+}
 
-    responseEmpty: document.getElementById('response-empty'),
-    response: document.getElementById('response'),
-    status: document.getElementById('response-status'),
-    time: document.getElementById('response-time'),
-    headers: document.getElementById('response-headers'),
-    body_: document.getElementById('response-body'),
+function saveProgress() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
+  } catch {
+    // The game still works, it just will not be remembered.
+  }
+}
 
-    finish: document.getElementById('finish'),
-    finishBody: document.getElementById('finish-body'),
-    finishReplay: document.getElementById('finish-replay')
+function attemptsOn(id) {
+  return progress.attempts[id] || 0;
+}
+
+// Showing a level
+
+function showLevel(id) {
+  level = id;
+  el('finish').hidden = true;
+  verdict.hidden = true;
+  el('next-level').hidden = true;
+  response.hidden = true;
+  el('nothing-sent').hidden = false;
+
+  const current = levels.find((item) => item.id === id);
+  el('level-count').textContent = `Level ${id} of ${total}`;
+  el('level-title').textContent = current.title;
+  el('level-concept').textContent = current.concept;
+  el('level-task').textContent = current.task;
+
+  showAttempts();
+  showFrames();
+}
+
+function showFrames() {
+  for (const frame of levelMap.querySelectorAll('.frame')) {
+    const id = Number(frame.dataset.level);
+    const solved = progress.solved.includes(id);
+
+    frame.disabled = id > progress.unlocked && !solved;
+    frame.classList.toggle('is-current', id === level);
+    frame.classList.toggle('is-solved', solved && id !== level);
+  }
+}
+
+function showAttempts() {
+  const count = attemptsOn(level);
+
+  if (count === 0) el('attempts').textContent = 'No attempts yet';
+  else el('attempts').textContent = count === 1 ? '1 attempt' : `${count} attempts`;
+}
+
+// The request
+
+function addQueryRow(name = '', value = '') {
+  const row = document.createElement('div');
+  row.className = 'query-row';
+  row.innerHTML = `
+    <input type="text" class="query-name" placeholder="name" aria-label="Parameter name" autocomplete="off">
+    <input type="text" class="query-value" placeholder="value" aria-label="Parameter value" autocomplete="off">
+    <button type="button" class="ghost" aria-label="Remove this parameter">&times;</button>`;
+
+  row.querySelector('.query-name').value = name;
+  row.querySelector('.query-value').value = value;
+  row.querySelector('button').addEventListener('click', () => {
+    row.remove();
+    showRequestLine();
+  });
+
+  queryRows.append(row);
+  return row;
+}
+
+function requestUrl() {
+  const typed = pathInput.value.trim().replace(/^\/*(api\/)?/, '');
+  const params = new URLSearchParams();
+
+  for (const row of queryRows.querySelectorAll('.query-row')) {
+    const name = row.querySelector('.query-name').value.trim();
+    if (name) params.append(name, row.querySelector('.query-value').value.trim());
+  }
+
+  const query = params.toString();
+  if (!query) return `/api/${typed}`;
+  return `/api/${typed}${typed.includes('?') ? '&' : '?'}${query}`;
+}
+
+function showRequestLine() {
+  requestLine.textContent = `${method.value} ${requestUrl()}`;
+}
+
+function bodyAllowed() {
+  return BODY_METHODS.includes(method.value);
+}
+
+function syncBody() {
+  body.disabled = !bodyAllowed();
+  bodyNote.textContent = body.disabled ? 'GET and DELETE requests carry no body.' : '';
+  bodyNote.classList.remove('is-error');
+}
+
+async function send() {
+  if (sending) return;
+
+  const options = {
+    method: method.value,
+    cache: 'no-store',
+    headers: { 'X-Quest-Level': String(level) },
   };
 
-  // ------------------------------------------------------------------- state
-
-  // `current` is the furthest unlocked level, `viewing` is the one on screen.
-  var state = { current: 1, done: [], attempts: {} };
-  var viewing = 1;
-  var busy = false;
-
-  function loadProgress() {
-    var raw = null;
+  if (bodyAllowed() && body.value.trim()) {
+    // Sent exactly as typed, even if it is not valid JSON: the server is the
+    // one that decides. Parsing here only puts a warning under the field.
     try {
-      raw = localStorage.getItem(STORAGE_KEY);
-    } catch (err) {
-      raw = null;
-    }
-    if (!raw) return;
-    try {
-      var saved = JSON.parse(raw);
-      if (saved && typeof saved === 'object') {
-        state.current = clampLevel(saved.current);
-        state.done = Array.isArray(saved.done) ? saved.done.filter(isLevelId) : [];
-        state.attempts = saved.attempts && typeof saved.attempts === 'object' ? saved.attempts : {};
-      }
-    } catch (err) {
-      /* corrupt storage: start over silently */
-    }
-  }
-
-  function saveProgress() {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch (err) {
-      /* ignore: progress simply is not remembered */
-    }
-  }
-
-  function isLevelId(id) {
-    return typeof id === 'number' && id >= 1 && id <= TOTAL;
-  }
-
-  function clampLevel(id) {
-    var n = parseInt(id, 10);
-    if (!n || n < 1) return 1;
-    return n > TOTAL ? TOTAL : n;
-  }
-
-  function levelById(id) {
-    for (var i = 0; i < LEVELS.length; i++) {
-      if (LEVELS[i].id === id) return LEVELS[i];
-    }
-    return LEVELS[0];
-  }
-
-  function isDone(id) {
-    return state.done.indexOf(id) !== -1;
-  }
-
-  function totalAttempts() {
-    var sum = 0;
-    Object.keys(state.attempts).forEach(function (key) {
-      sum += Number(state.attempts[key]) || 0;
-    });
-    return sum;
-  }
-
-  /** Fill {placeholders} from a plain object. */
-  function fill(template, values) {
-    return String(template === undefined || template === null ? '' : template)
-      .replace(/\{(\w+)\}/g, function (match, key) {
-        return Object.prototype.hasOwnProperty.call(values, key) ? String(values[key]) : match;
-      });
-  }
-
-  // ------------------------------------------------------------------ render
-
-  function renderMap() {
-    var chips = el.map.querySelectorAll('.chip');
-    Array.prototype.forEach.call(chips, function (chip) {
-      var id = parseInt(chip.getAttribute('data-level'), 10);
-      var done = isDone(id);
-      var unlocked = done || id <= state.current;
-      chip.classList.toggle('chip--done', done && id !== viewing);
-      chip.classList.toggle('chip--current', id === viewing);
-      chip.classList.toggle('chip--locked', !unlocked);
-      chip.disabled = !unlocked;
-      chip.setAttribute('aria-current', id === viewing ? 'step' : 'false');
-      chip.title = levelById(id).title + (done ? ' · ' + T.progress.done : (unlocked ? '' : ' · ' + T.progress.locked));
-    });
-  }
-
-  function renderLevel() {
-    var level = levelById(viewing);
-    el.of.textContent = fill(T.level.of, { n: viewing, total: TOTAL });
-    el.title.textContent = level.title;
-    el.concept.textContent = level.concept;
-    el.task.textContent = level.task;
-    el.attempts.textContent = fill(T.level.attempts, { n: state.attempts[viewing] || 0 });
-    renderMap();
-  }
-
-  function clearResponse() {
-    el.verdict.hidden = true;
-    el.verdictNext.hidden = true;
-    el.response.hidden = true;
-    el.responseEmpty.hidden = false;
-    el.verdict.className = 'verdict';
-  }
-
-  function setLevel(id) {
-    viewing = clampLevel(id);
-    clearResponse();
-    renderLevel();
-  }
-
-  // ----------------------------------------------------------------- builder
-
-  function bodyAllowed() {
-    var method = el.method.value;
-    return method === 'POST' || method === 'PUT' || method === 'PATCH';
-  }
-
-  function syncBodyState() {
-    var allowed = bodyAllowed();
-    el.body.disabled = !allowed;
-    if (!allowed) {
-      el.bodyNote.textContent = T.builder.bodyDisabled;
-      el.bodyNote.classList.remove('field__note--error');
-    } else {
-      el.bodyNote.textContent = '';
-      el.bodyNote.classList.remove('field__note--error');
-    }
-  }
-
-  /** Strip a leading "/", a leading "api/" and any trailing slash noise. */
-  function normalizePath(raw) {
-    var value = String(raw || '').trim();
-    value = value.replace(/^\/+/, '');
-    value = value.replace(/^api\/+/i, '');
-    value = value.replace(/^\/+/, '');
-    return value;
-  }
-
-  function addQueryRow(key, value) {
-    var row = document.createElement('div');
-    row.className = 'query-row';
-
-    var keyInput = document.createElement('input');
-    keyInput.type = 'text';
-    keyInput.className = 'input input--mono query-row__key';
-    keyInput.dir = 'ltr';
-    keyInput.spellcheck = false;
-    keyInput.autocomplete = 'off';
-    keyInput.placeholder = T.builder.key;
-    keyInput.setAttribute('aria-label', T.builder.key);
-    if (key) keyInput.value = key;
-
-    var valueInput = document.createElement('input');
-    valueInput.type = 'text';
-    valueInput.className = 'input input--mono query-row__value';
-    valueInput.dir = 'ltr';
-    valueInput.spellcheck = false;
-    valueInput.autocomplete = 'off';
-    valueInput.placeholder = T.builder.value;
-    valueInput.setAttribute('aria-label', T.builder.value);
-    if (value) valueInput.value = value;
-
-    var remove = document.createElement('button');
-    remove.type = 'button';
-    remove.className = 'btn btn--ghost btn--icon query-row__remove';
-    remove.textContent = '×'; // multiplication sign, not an icon font
-    remove.setAttribute('aria-label', T.builder.removeParam);
-    remove.title = T.builder.removeParam;
-    remove.addEventListener('click', function () {
-      row.remove();
-      renderRequestLine();
-    });
-
-    row.appendChild(keyInput);
-    row.appendChild(valueInput);
-    row.appendChild(remove);
-    el.queryRows.appendChild(row);
-    return row;
-  }
-
-  /** Query rows → [[key, value], ...]; rows with an empty key are ignored. */
-  function collectQuery() {
-    var pairs = [];
-    var rows = el.queryRows.querySelectorAll('.query-row');
-    Array.prototype.forEach.call(rows, function (row) {
-      var key = row.querySelector('.query-row__key').value.trim();
-      var value = row.querySelector('.query-row__value').value.trim();
-      if (key) pairs.push([key, value]);
-    });
-    return pairs;
-  }
-
-  function queryString() {
-    return collectQuery().map(function (pair) {
-      return encodeURIComponent(pair[0]) + '=' + encodeURIComponent(pair[1]);
-    }).join('&');
-  }
-
-  function buildUrl() {
-    var path = '/api/' + normalizePath(el.path.value);
-    var query = queryString();
-    return query ? path + '?' + query : path;
-  }
-
-  function renderRequestLine() {
-    // t.builder.requestLine is the pattern, e.g. "{method} /api/{path}".
-    var query = queryString();
-    var path = normalizePath(el.path.value) + (query ? '?' + query : '');
-    el.requestLine.textContent = fill(T.builder.requestLine, {
-      method: el.method.value,
-      path: path
-    }) + ' HTTP/1.1';
-  }
-
-  /** A "?a=b&c=d" typed into the path field becomes query rows. */
-  function absorbQueryFromPath() {
-    var value = el.path.value;
-    var mark = value.indexOf('?');
-    if (mark === -1) return;
-
-    var pathPart = value.slice(0, mark);
-    var queryPart = value.slice(mark + 1);
-    el.path.value = pathPart;
-
-    queryPart.split('&').forEach(function (chunk) {
-      if (!chunk) return;
-      var eq = chunk.indexOf('=');
-      var key = eq === -1 ? chunk : chunk.slice(0, eq);
-      var val = eq === -1 ? '' : chunk.slice(eq + 1);
-      try {
-        key = decodeURIComponent(key);
-        val = decodeURIComponent(val);
-      } catch (err) {
-        /* keep the raw text if it is not valid percent-encoding */
-      }
-      if (key.trim()) addQueryRow(key.trim(), val);
-    });
-  }
-
-  // ------------------------------------------------------------------ sending
-
-  function statusClass(code) {
-    return 'status status--' + Math.floor(code / 100) + 'xx';
-  }
-
-  function renderResponse(res, text, ms) {
-    el.responseEmpty.hidden = true;
-    el.response.hidden = false;
-
-    el.status.className = statusClass(res.status);
-    el.status.textContent = res.status + (res.statusText ? ' ' + res.statusText : '');
-    el.time.textContent = fill(T.response.time, { ms: ms });
-
-    el.headers.textContent = '';
-    HEADERS_OF_INTEREST.forEach(function (name) {
-      var value = res.headers.get(name);
-      if (value === null) return;
-      var dt = document.createElement('dt');
-      dt.className = 'headers__name';
-      dt.textContent = name;
-      var dd = document.createElement('dd');
-      dd.className = 'headers__value';
-      dd.textContent = value;
-      el.headers.appendChild(dt);
-      el.headers.appendChild(dd);
-    });
-
-    var code = el.body_.querySelector('code');
-    if (res.status === 204 || !text) {
-      code.textContent = T.response.noBody;
-      el.body_.classList.add('code-block--empty');
-    } else {
-      el.body_.classList.remove('code-block--empty');
-      try {
-        code.textContent = JSON.stringify(JSON.parse(text), null, 2);
-      } catch (err) {
-        code.textContent = text; // not JSON: show exactly what came back
-      }
-    }
-  }
-
-  function hintText(rawHint, status) {
-    var raw = String(rawHint || '');
-    var mark = raw.indexOf(':');
-    var code = mark === -1 ? raw : raw.slice(0, mark);
-    var arg = mark === -1 ? '' : raw.slice(mark + 1);
-    var template = T.hints[code] || code;
-    return fill(template, { param: arg, field: arg, expected: arg, actual: status });
-  }
-
-  function renderVerdict(res) {
-    var result = res.headers.get('x-quest-result');
-    if (!result) {
-      el.verdict.hidden = true;
-      return;
+      JSON.parse(body.value);
+      bodyNote.textContent = '';
+      bodyNote.classList.remove('is-error');
+    } catch {
+      bodyNote.textContent = 'That is not valid JSON yet.';
+      bodyNote.classList.add('is-error');
     }
 
-    var level = levelById(viewing);
-    el.verdict.hidden = false;
-
-    if (result === 'pass') {
-      el.verdict.className = 'verdict verdict--pass';
-      el.verdictHead.textContent = T.verdict.pass;
-      el.verdictText.textContent = level.success;
-      markPassed(level.id);
-      el.verdictNext.hidden = false;
-      el.verdictNext.textContent = level.id === TOTAL ? T.verdict.finish : T.verdict.next;
-    } else {
-      el.verdict.className = 'verdict verdict--fail';
-      el.verdictHead.textContent = T.verdict.fail;
-      el.verdictText.textContent = hintText(res.headers.get('x-quest-hint'), res.status);
-      el.verdictNext.hidden = true;
-    }
+    options.headers['Content-Type'] = 'application/json';
+    options.body = body.value;
   }
 
-  function markPassed(id) {
-    if (!isDone(id)) state.done.push(id);
-    if (id >= state.current && state.current < TOTAL) state.current = id + 1;
-    saveProgress();
-    renderMap();
+  sending = true;
+  sendButton.disabled = true;
+  sendButton.textContent = 'Sending...';
+
+  progress.attempts[level] = attemptsOn(level) + 1;
+  saveProgress();
+  showAttempts();
+
+  const started = Date.now();
+
+  try {
+    const result = await fetch(requestUrl(), options);
+    const text = await result.text();
+
+    showResponse(result, text, Date.now() - started);
+    showVerdict(result);
+  } catch (error) {
+    showFailedRequest(error);
   }
 
-  function showFinish() {
-    el.finish.hidden = false;
-    el.finishBody.textContent = fill(T.finish.body, { attempts: totalAttempts() });
-    el.finish.scrollIntoView({ block: 'start' });
+  sending = false;
+  sendButton.disabled = false;
+  sendButton.textContent = 'Send request';
+}
+
+// The answer
+
+function showResponse(result, text, ms) {
+  el('nothing-sent').hidden = true;
+  response.hidden = false;
+
+  el('status').textContent = `${result.status} ${result.statusText}`.trim();
+  el('status').className = `status status--${Math.floor(result.status / 100)}xx`;
+  el('duration').textContent = `${ms} ms`;
+
+  const headers = el('headers');
+  headers.replaceChildren();
+  for (const name of SHOWN_HEADERS) {
+    const value = result.headers.get(name);
+    if (value === null) continue;
+
+    const term = document.createElement('dt');
+    term.textContent = name;
+    const description = document.createElement('dd');
+    description.textContent = value;
+    headers.append(term, description);
   }
 
-  function send() {
-    if (busy) return;
+  responseBody.textContent = text ? pretty(text) : 'No body.';
+}
 
-    var method = el.method.value;
-    var url = buildUrl();
-    var options = {
-      method: method,
-      cache: 'no-store',
-      headers: { 'X-Quest-Level': String(viewing) }
-    };
-
-    if (bodyAllowed()) {
-      var raw = el.body.value;
-      if (raw.trim() !== '') {
-        // Client-side parse for the hint only. The server is the judge, so the
-        // raw text is sent exactly as typed even when it is invalid JSON.
-        try {
-          JSON.parse(raw);
-          el.bodyNote.textContent = '';
-          el.bodyNote.classList.remove('field__note--error');
-        } catch (err) {
-          el.bodyNote.textContent = T.builder.bodyInvalidJson;
-          el.bodyNote.classList.add('field__note--error');
-        }
-        options.headers['Content-Type'] = 'application/json';
-        options.body = raw;
-      }
-    }
-
-    busy = true;
-    el.send.disabled = true;
-    el.send.textContent = T.builder.sending;
-
-    state.attempts[viewing] = (state.attempts[viewing] || 0) + 1;
-    saveProgress();
-    el.attempts.textContent = fill(T.level.attempts, { n: state.attempts[viewing] });
-
-    var started = (window.performance && performance.now) ? performance.now() : Date.now();
-
-    fetch(url, options).then(function (res) {
-      var now = (window.performance && performance.now) ? performance.now() : Date.now();
-      var ms = Math.round(now - started);
-      return res.text().then(function (text) {
-        renderResponse(res, text, ms);
-        renderVerdict(res);
-      });
-    }).catch(function (err) {
-      // Network failure: no verdict to show, only what went wrong.
-      el.responseEmpty.hidden = true;
-      el.response.hidden = false;
-      el.status.className = 'status status--5xx';
-      el.status.textContent = String(err && err.message ? err.message : err);
-      el.time.textContent = '';
-      el.headers.textContent = '';
-      el.body_.querySelector('code').textContent = '';
-      el.verdict.hidden = true;
-    }).then(function () {
-      busy = false;
-      el.send.disabled = false;
-      el.send.textContent = T.builder.send;
-    });
+function pretty(text) {
+  try {
+    return JSON.stringify(JSON.parse(text), null, 2);
+  } catch {
+    return text;
   }
+}
 
-  // ------------------------------------------------------------------ events
+function showVerdict(result) {
+  const passed = result.headers.get('X-Quest-Result') === 'pass';
+  const nextButton = el('next-level');
 
-  function goNext() {
-    if (viewing === TOTAL) {
-      showFinish();
-      return;
-    }
-    setLevel(viewing + 1);
-  }
+  verdict.hidden = false;
+  verdict.className = passed ? 'verdict is-pass' : 'verdict is-fail';
+  el('verdict-head').textContent = passed ? 'Solved' : 'Not yet';
+  el('verdict-text').textContent = passed
+    ? levels.find((item) => item.id === level).success
+    : result.headers.get('X-Quest-Hint') ?? 'That request does not match this level.';
 
-  function resetProgress() {
-    if (!window.confirm(T.progress.resetConfirm)) return;
-    state = { current: 1, done: [], attempts: {} };
-    saveProgress();
-    el.finish.hidden = true;
-    setLevel(1);
-  }
+  nextButton.hidden = !passed;
+  if (!passed) return;
 
-  function bind() {
-    el.form.addEventListener('submit', function (event) {
-      event.preventDefault();
-      send();
-    });
+  nextButton.textContent = level === total ? 'See the results' : 'Next level';
+  if (!progress.solved.includes(level)) progress.solved.push(level);
+  progress.unlocked = Math.max(progress.unlocked, Math.min(level + 1, total));
+  saveProgress();
+  showFrames();
+}
 
-    el.method.addEventListener('change', function () {
-      syncBodyState();
-      renderRequestLine();
-    });
+function showFailedRequest(error) {
+  el('nothing-sent').hidden = true;
+  response.hidden = false;
+  verdict.hidden = true;
 
-    el.path.addEventListener('input', function () {
-      absorbQueryFromPath();
-      renderRequestLine();
-    });
-    el.path.addEventListener('blur', function () {
-      el.path.value = normalizePath(el.path.value);
-      renderRequestLine();
-    });
+  el('status').textContent = 'no answer';
+  el('status').className = 'status status--5xx';
+  el('duration').textContent = '';
+  el('headers').replaceChildren();
+  responseBody.textContent = `The request never reached the server: ${error.message}`;
+}
 
-    el.queryRows.addEventListener('input', renderRequestLine);
-    el.addParam.addEventListener('click', function () {
-      var row = addQueryRow('', '');
-      row.querySelector('.query-row__key').focus();
-      renderRequestLine();
-    });
+function showFinish() {
+  const attempts = Object.values(progress.attempts).reduce((sum, count) => sum + count, 0);
 
-    el.map.addEventListener('click', function (event) {
-      var chip = event.target.closest ? event.target.closest('.chip') : null;
-      if (!chip || chip.disabled) return;
-      el.finish.hidden = true;
-      setLevel(parseInt(chip.getAttribute('data-level'), 10));
-    });
+  el('finish').hidden = false;
+  el('finish-text').textContent = `All ${total} levels, in ${attempts} requests. `
+    + 'Every level stays open if you want to try another way of asking.';
+}
 
-    el.reset.addEventListener('click', resetProgress);
-    el.verdictNext.addEventListener('click', goNext);
+// Events
 
-    el.finishReplay.addEventListener('click', function () {
-      // Replay keeps `done` and `attempts` so every level stays open; only the
-      // cursor goes back to level 1.
-      el.finish.hidden = true;
-      setLevel(1);
-    });
+form.addEventListener('submit', (event) => {
+  event.preventDefault();
+  send();
+});
 
-    document.addEventListener('keydown', function (event) {
-      if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
-        event.preventDefault();
-        send();
-      }
-    });
-  }
+method.addEventListener('change', () => {
+  syncBody();
+  showRequestLine();
+});
 
-  // -------------------------------------------------------------------- init
+pathInput.addEventListener('input', showRequestLine);
+queryRows.addEventListener('input', showRequestLine);
 
-  loadProgress();
-  viewing = clampLevel(state.current);
-  bind();
-  addQueryRow('', '');
-  syncBodyState();
-  setLevel(viewing);
-  renderRequestLine();
-}());
+el('add-param').addEventListener('click', () => {
+  addQueryRow().querySelector('.query-name').focus();
+});
+
+levelMap.addEventListener('click', (event) => {
+  const frame = event.target.closest('.frame');
+  if (frame && !frame.disabled) showLevel(Number(frame.dataset.level));
+});
+
+el('next-level').addEventListener('click', () => {
+  if (level === total) showFinish();
+  else showLevel(level + 1);
+});
+
+el('finish-replay').addEventListener('click', () => showLevel(1));
+
+el('reset').addEventListener('click', () => {
+  if (!confirm('Start over and forget the levels you solved?')) return;
+
+  progress = { unlocked: 1, solved: [], attempts: {} };
+  saveProgress();
+  showLevel(1);
+});
+
+addQueryRow();
+syncBody();
+showLevel(level);
+showRequestLine();

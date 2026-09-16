@@ -1,117 +1,77 @@
-'use strict';
-
 const express = require('express');
+
 const store = require('../data/store');
-const { validate, validateQuery } = require('../validate');
 const schemas = require('../schemas');
-const { applyMovieQuery } = require('./api.movies');
+const { filterMovies, filterDirectors } = require('../query');
+const { validateBody, validateQuery } = require('../validate');
 
 const router = express.Router();
 
-function sendValidationError(res, status, message, errors) {
-  res.status(status).json({ error: message, details: errors });
+function badRequest(res, error, details) {
+  res.status(400).json({ error, details });
 }
 
-function applyDirectorQuery(directors, reqQuery) {
-  const { ok, errors, query } = validateQuery(schemas.directors.queries, reqQuery);
-  if (!ok) return { ok, errors, result: null };
-
-  let result = directors.slice();
-
-  if (query.country !== undefined) {
-    const needle = query.country.toLowerCase();
-    result = result.filter((d) => d.country.toLowerCase() === needle);
-  }
-  if (query.q !== undefined) {
-    const needle = query.q.toLowerCase();
-    result = result.filter((d) => d.name.toLowerCase().includes(needle));
-  }
-
-  if (query.sort !== undefined) {
-    const desc = query.sort.startsWith('-');
-    const field = desc ? query.sort.slice(1) : query.sort;
-    result.sort((a, b) => {
-      if (a[field] < b[field]) return desc ? 1 : -1;
-      if (a[field] > b[field]) return desc ? -1 : 1;
-      return 0;
-    });
-  }
-
-  if (query.limit !== undefined) {
-    result = result.slice(0, query.limit);
-  }
-
-  return { ok: true, errors: [], result };
+function moviesOf(directorId) {
+  return store.movies.all().filter((movie) => movie.directorId === directorId);
 }
+
+router.param('id', (req, res, next, id) => {
+  const director = /^\d+$/.test(id) && store.directors.find(Number(id));
+  if (!director) return res.status(404).json({ error: 'Director not found' });
+
+  req.director = director;
+  next();
+});
 
 router.get('/', (req, res) => {
-  const { ok, errors, result } = applyDirectorQuery(store.directors.list(), req.query);
-  if (!ok) return sendValidationError(res, 400, 'Invalid query parameters', errors);
-  res.json(result);
+  const { problems, query } = validateQuery(schemas.directors.queries, req.query);
+  if (problems.length) return badRequest(res, 'Invalid query parameters', problems);
+
+  res.json(filterDirectors(store.directors.all(), query));
 });
 
 router.get('/:id', (req, res) => {
-  if (!/^\d+$/.test(req.params.id)) return res.status(404).json({ error: 'Director not found' });
-  const id = parseInt(req.params.id, 10);
-  const director = store.directors.get(id);
-  if (!director) return res.status(404).json({ error: 'Director not found' });
-  res.json(director);
+  res.json(req.director);
 });
 
+// The movies of one director take the same parameters as /api/movies.
 router.get('/:id/movies', (req, res) => {
-  if (!/^\d+$/.test(req.params.id)) return res.status(404).json({ error: 'Director not found' });
-  const id = parseInt(req.params.id, 10);
-  const director = store.directors.get(id);
-  if (!director) return res.status(404).json({ error: 'Director not found' });
+  const { problems, query } = validateQuery(schemas.movies.queries, req.query);
+  if (problems.length) return badRequest(res, 'Invalid query parameters', problems);
 
-  const movies = store.movies.list().filter((m) => m.directorId === id);
-  const { ok, errors, result } = applyMovieQuery(movies, req.query);
-  if (!ok) return sendValidationError(res, 400, 'Invalid query parameters', errors);
-  res.json(result);
+  res.json(filterMovies(moviesOf(req.director.id), query));
 });
 
 router.post('/', (req, res) => {
-  const { ok, errors } = validate(schemas.directors, req.body);
-  if (!ok) return sendValidationError(res, 400, 'Invalid director', errors);
-  const created = store.directors.create(req.body);
-  res.status(201).set('Location', `/api/directors/${created.id}`).json(created);
+  const problems = validateBody(schemas.directors, req.body);
+  if (problems.length) return badRequest(res, 'Invalid director', problems);
+
+  const director = store.directors.add(req.body);
+  res.status(201).location(`/api/directors/${director.id}`).json(director);
 });
 
 router.put('/:id', (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  if (!/^\d+$/.test(req.params.id) || !store.directors.get(id)) {
-    return res.status(404).json({ error: 'Director not found' });
-  }
-  const { ok, errors } = validate(schemas.directors, req.body);
-  if (!ok) return sendValidationError(res, 400, 'Invalid director', errors);
-  const replaced = store.directors.replace(id, req.body);
-  res.json(replaced);
+  const problems = validateBody(schemas.directors, req.body);
+  if (problems.length) return badRequest(res, 'Invalid director', problems);
+
+  res.json(store.directors.replace(req.director.id, req.body));
 });
 
 router.patch('/:id', (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  if (!/^\d+$/.test(req.params.id) || !store.directors.get(id)) {
-    return res.status(404).json({ error: 'Director not found' });
-  }
-  const body = req.body;
-  if (typeof body !== 'object' || body === null || Array.isArray(body) || Object.keys(body).length === 0) {
-    return res.status(400).json({ error: 'Body must be a non-empty object' });
-  }
-  const { ok, errors } = validate(schemas.directors, body, { partial: true });
-  if (!ok) return sendValidationError(res, 400, 'Invalid director', errors);
-  const updated = store.directors.update(id, body);
-  res.json(updated);
+  const problems = validateBody(schemas.directors, req.body, { partial: true });
+  if (problems.length) return badRequest(res, 'Invalid director', problems);
+
+  res.json(store.directors.update(req.director.id, req.body));
 });
 
+// Movies point at their director by id, so removing a director who still has
+// movies would leave them pointing at nothing.
 router.delete('/:id', (req, res) => {
-  if (!/^\d+$/.test(req.params.id)) return res.status(404).json({ error: 'Director not found' });
-  const id = parseInt(req.params.id, 10);
-  if (!store.directors.get(id)) return res.status(404).json({ error: 'Director not found' });
+  if (moviesOf(req.director.id).length > 0) {
+    return res.status(409).json({ error: 'Director still has movies' });
+  }
 
-  const hasMovies = store.movies.list().some((m) => m.directorId === id);
-  if (hasMovies) return res.status(409).json({ error: 'Director still has movies' });
-
-  store.directors.remove(id);
+  store.directors.remove(req.director.id);
   res.status(204).end();
 });
 

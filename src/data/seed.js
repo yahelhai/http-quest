@@ -1,4 +1,5 @@
-'use strict';
+// Every genre appears at least once and every director has at least one movie,
+// so no level can ask for something that is not in here.
 
 module.exports = {
   directors: [
@@ -10,6 +11,7 @@ module.exports = {
     { id: 6, name: 'Steven Spielberg', country: 'United States', born: 1946 },
     { id: 7, name: 'Werner Herzog', country: 'Germany', born: 1942 },
   ],
+
   movies: [
     { id: 1, title: 'Inception', year: 2010, genre: 'sci-fi', rating: 8.8, directorId: 1 },
     { id: 2, title: 'The Prestige', year: 2006, genre: 'drama', rating: 8.5, directorId: 1 },

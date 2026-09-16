@@ -1,74 +1,55 @@
-'use strict';
-
-// In-memory store for movies and directors, loaded from src/data/seed.js.
-// Always returns copies so callers cannot mutate internal state directly.
-// Ids are monotonic per collection: a deleted id is never handed out again,
-// so a "GET what you deleted" request keeps answering 404.
+// The data lives in memory. Writes from the game stay for as long as the
+// server runs, and restarting brings the seed back.
 
 const seed = require('./seed');
 
-function clone(obj) {
-  return { ...obj };
-}
+function collection(seedItems) {
+  const items = seedItems.map((item) => ({ ...item }));
+  let nextId = Math.max(...items.map((item) => item.id)) + 1;
 
-function makeCollection(seedItems) {
-  let items = [];
-  let nextId = 1;
+  function indexOf(id) {
+    return items.findIndex((item) => item.id === id);
+  }
 
-  const collection = {
-    load() {
-      items = seedItems.map(clone);
-      nextId = items.reduce((max, it) => Math.max(max, it.id), 0) + 1;
+  return {
+    all() {
+      return items;
     },
 
-    list() {
-      return items.map(clone);
+    find(id) {
+      return items[indexOf(id)];
     },
 
-    get(id) {
-      const item = items.find((it) => it.id === id);
-      return item ? clone(item) : undefined;
-    },
-
-    create(data) {
-      const created = { ...data, id: nextId++ };
+    // Ids only grow, so a deleted id is never handed out again and a request
+    // for it keeps answering 404. Level 11 relies on that.
+    add(data) {
+      const created = { ...data, id: nextId };
+      nextId += 1;
       items.push(created);
-      return clone(created);
+      return created;
     },
 
+    // The routes look an item up before they change or remove it, so the
+    // three below are only ever called with an id that is really there.
     replace(id, data) {
-      const index = items.findIndex((it) => it.id === id);
-      if (index === -1) return undefined;
+      const index = indexOf(id);
       items[index] = { ...data, id };
-      return clone(items[index]);
+      return items[index];
     },
 
-    update(id, patch) {
-      const index = items.findIndex((it) => it.id === id);
-      if (index === -1) return undefined;
-      items[index] = { ...items[index], ...patch, id };
-      return clone(items[index]);
+    update(id, changes) {
+      const index = indexOf(id);
+      items[index] = { ...items[index], ...changes, id };
+      return items[index];
     },
 
     remove(id) {
-      const index = items.findIndex((it) => it.id === id);
-      if (index === -1) return false;
-      items.splice(index, 1);
-      return true;
+      items.splice(indexOf(id), 1);
     },
   };
-
-  collection.load();
-  return collection;
 }
 
-const store = {
-  movies: makeCollection(seed.movies),
-  directors: makeCollection(seed.directors),
-  reset() {
-    store.movies.load();
-    store.directors.load();
-  },
+module.exports = {
+  movies: collection(seed.movies),
+  directors: collection(seed.directors),
 };
-
-module.exports = store;
