@@ -1,54 +1,55 @@
-'use strict';
-
 const path = require('path');
 const express = require('express');
 
-const moviesRouter = require('./src/routes/api.movies');
-const directorsRouter = require('./src/routes/api.directors');
-
-function notFoundJson(req, res) {
-  res.status(404).json({ error: 'Not found' });
-}
+const quest = require('./src/quest');
+const schemas = require('./src/schemas');
+const { publicLevels } = require('./src/levels');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
 
-// The game re-sends identical GETs; a 304 would let the browser replay a cached
-// body while the level verdict is computed against a bodiless 304. No caching.
-app.set('etag', false);
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
+
+// Levels are replayed with the same GET, and a 304 would come back without a
+// body for the player to read.
+app.set('etag', false);
+
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.use('/api', (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
-app.use('/api', require('./src/quest'));
-app.use('/api', express.json());
-app.use('/api/movies', moviesRouter);
-app.use('/api/directors', directorsRouter);
-app.use('/api', notFoundJson);
+// quest runs before the JSON parser, so a body the parser rejects still gets
+// a verdict instead of slipping through unjudged.
+app.use('/api', quest, express.json());
+app.use('/api/movies', require('./src/routes/api.movies'));
+app.use('/api/directors', require('./src/routes/api.directors'));
+app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 
-app.use('/', require('./src/routes/pages'));
-app.use((req, res) => res.status(404).type('text').send('Not found'));
+app.get('/', (req, res) => {
+  res.render('game', { page: 'game', levels: publicLevels });
+});
 
-// eslint-disable-next-line no-unused-vars
+app.get('/schemas', (req, res) => {
+  res.render('schemas', {
+    page: 'schemas',
+    resources: [schemas.movies, schemas.directors],
+    endpoints: schemas.endpoints,
+  });
+});
+
+app.use((req, res) => res.status(404).type('text').send('Page not found'));
+
+// Express needs four arguments here to treat this as the error handler.
 app.use((err, req, res, next) => {
-  const isApi = req.path.startsWith('/api');
-
   if (err.type === 'entity.parse.failed') {
     return res.status(400).json({ error: 'Malformed JSON body' });
   }
 
-  const status = err.status || 500;
-  const message = status === 500 ? 'Internal server error' : (err.message || 'Error');
-
-  if (isApi) {
-    return res.status(status).json({ error: message });
-  }
-  res.status(status).type('text').send(message);
+  console.error(err);
+  res.status(500).json({ error: 'Something went wrong on the server' });
 });
 
 module.exports = app;
 
 if (require.main === module) {
-  app.listen(PORT, () => console.log(`HTTP Quest server running at http://localhost:${PORT}`));
+  const port = process.env.PORT || 3000;
+  app.listen(port, () => console.log(`HTTP Quest is running on http://localhost:${port}`));
 }
